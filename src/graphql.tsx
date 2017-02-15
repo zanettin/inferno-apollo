@@ -161,10 +161,6 @@ export interface OperationOption {
   alias?: string;
 }
 
-export interface WrapWithApollo {
-  <P, TComponentConstruct extends (ComponentClass<P> | StatelessComponent<P>)>(component: TComponentConstruct): TComponentConstruct;
-}
-
 export default function graphql(
   document: DocumentNode,
   operationOptions: OperationOption = {}
@@ -187,7 +183,7 @@ export default function graphql(
   // Helps track hot reloading.
   const version = nextVersion++;
 
-  const wrapWithApolloComponent: WrapWithApollo = WrappedComponent => {
+  const wrapWithApolloComponent: any = WrappedComponent => {
 
     const graphQLDisplayName = `${alias}(${getDisplayName(WrappedComponent)})`;
 

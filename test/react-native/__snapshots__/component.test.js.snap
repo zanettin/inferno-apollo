@@ -1,8 +1,0 @@
-exports[`App renders correctly 1`] = `
-<Text
-  accessible={true}
-  allowFontScaling={true}
-  ellipsizeMode="tail">
-  Loading...
-</Text>
-`;
