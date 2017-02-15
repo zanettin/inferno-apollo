@@ -54,7 +54,6 @@
     "lib",
     "src",
     "exports.d.ts",
-    "CHANGELOG.md",
     "LICENSE",
     "README.md"
   ],

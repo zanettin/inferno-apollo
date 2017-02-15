@@ -2,7 +2,7 @@
 
 # inferno-apollo
 
-## port of react-apollo.
+port of react-apollo.
 
 --- wip ---
 
