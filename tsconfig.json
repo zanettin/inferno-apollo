@@ -1,0 +1,29 @@
+{
+  "compilerOptions": {
+    "target": "es5",
+    "module": "commonjs",
+    "lib": ["es6", "dom"],
+    "moduleResolution": "node",
+    "sourceMap": true,
+    "declaration": true,
+    "noImplicitAny": false,
+    "rootDir": "src",
+    "outDir": "lib",
+    "allowSyntheticDefaultImports": true,
+    "experimentalDecorators": true,
+    "pretty": true,
+    "removeComments": true,
+    "jsx": "react"
+  },
+  "include": [
+    "./typings.d.ts",
+    "./src/index.ts",
+    "./src/server.ts",
+    "./src/test-utils.tsx"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "lib"
+   ]
+}
