@@ -1,9 +1,7 @@
 import {
   Component,
   createElement,
-  PropTypes,
-  ComponentClass,
-  StatelessComponent,
+  PropTypes
 } from 'inferno-compat';
 
 // modules don't export ES6 modules
@@ -183,7 +181,7 @@ export default function graphql(
   // Helps track hot reloading.
   const version = nextVersion++;
 
-  const wrapWithApolloComponent: any = WrappedComponent => {
+  const wrapWithApolloComponent: Function = WrappedComponent => {
 
     const graphQLDisplayName = `${alias}(${getDisplayName(WrappedComponent)})`;
 

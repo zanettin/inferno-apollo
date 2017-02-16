@@ -24,5 +24,6 @@
   }
 ,
 "typescript.tsdk": "./node_modules/typescript/lib",
-"eslint.enable": false
+"eslint.enable": false,
+"vsicons.presets.angular": false
 }

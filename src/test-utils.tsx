@@ -1,4 +1,4 @@
-import * as React from 'inferno-compat';
+import * as React from 'react';
 import ApolloClient from 'apollo-client';
 
 import {

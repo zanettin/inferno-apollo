@@ -1,5 +1,5 @@
 /* tslint:disable:no-unused-variable */
-import * as Inferno from 'inferno';
+import * as Inferno from 'inferno-compat';
 /* tslint:enable:no-unused-variable */
 import {
   Component,
@@ -72,6 +72,6 @@ export default class ApolloProvider extends Component<ProviderProps, any> {
   }
 
   render() {
-    return React.Children.only(this.props.children);
+    return Inferno.Children.only(this.props.children as Array<any>);
   }
 };

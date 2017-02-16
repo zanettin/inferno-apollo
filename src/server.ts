@@ -1,6 +1,6 @@
 
 import { Children } from 'react';
-import * as ReactDOM from 'inferno-compat';
+import * as InfernoServer from 'inferno-server';
 import ApolloClient from 'apollo-client';
 import assign = require('object-assign');
 
@@ -135,7 +135,7 @@ export function getDataFromTree(rootElement, rootContext: any = {}, fetchRoot: b
 
 export function renderToStringWithData(component) {
   return getDataFromTree(component)
-    .then(() => ReactDOM.renderToString(component));
+    .then(() => InfernoServer.renderToString(component));
 }
 
 export function cleanupApolloState(apolloState) {
