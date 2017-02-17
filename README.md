@@ -22,4 +22,4 @@ The Demo-App can be found [here](https://github.com/zanettin/inferno-apollo-demo
 Please refer to the [react-apollo github page](https://github.com/apollographql/react-apollo).
 
 ## Contribution
-feel free to contibute, send PRs or concat me [on twitter](https://twitter.com/roman_zanettin)
+feel free to contribute, send PRs or concat me [on twitter](https://twitter.com/roman_zanettin)
