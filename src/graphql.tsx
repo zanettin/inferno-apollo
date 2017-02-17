@@ -1,7 +1,7 @@
 import {
   Component,
   createElement,
-  PropTypes
+  PropTypes,
 } from 'inferno-compat';
 
 // modules don't export ES6 modules
