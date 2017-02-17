@@ -3,7 +3,7 @@
 # Inferno-apollo
 This is a port of [react-apollo](https://github.com/apollographql/react-apollo) for [inferno js](https://infernojs.org/).
 
-[![Build Status](https://semaphoreci.com/api/v1/open-source/inferno-apollo/branches/master/shields_badge.svg)](https://semaphoreci.com/open-source/inferno-apollo) [![npm version](https://badge.fury.io/js/inferno-apollo.svg)](https://badge.fury.io/js/incompose) [![npm downloads](https://img.shields.io/npm/dm/inferno-apollo.svg?style=flat-square)](https://www.npmjs.com/package/incompose) [![MIT](https://img.shields.io/npm/l/express.svg)](LICENSE.md)
+[![Build Status](https://semaphoreci.com/api/v1/open-source/inferno-apollo/branches/master/shields_badge.svg)](https://semaphoreci.com/open-source/inferno-apollo) [![npm version](https://badge.fury.io/js/inferno-apollo.svg)](https://www.npmjs.com/package/inferno-apollo) [![npm downloads](https://img.shields.io/npm/dm/inferno-apollo.svg?style=flat-square)](https://www.npmjs.com/package/inferno-apollo) [![MIT](https://img.shields.io/npm/l/express.svg)](LICENSE.md)
 
 ## Install
 ```
