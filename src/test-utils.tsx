@@ -12,7 +12,7 @@ import {
   DocumentNode,
 } from 'graphql';
 
-import { print } from 'graphql-tag/printer';
+import { print } from 'graphql-tag/bundledPrinter';
 
 
 import ApolloProvider from './ApolloProvider';
@@ -22,6 +22,7 @@ export class MockedProvider extends React.Component<any, any> {
 
   constructor(props, context) {
     super(props, context);
+    if (this.props.client) return;
 
     const networkInterface = mockNetworkInterface.apply(null, this.props.mocks);
     this.client = new ApolloClient({ networkInterface });
@@ -29,7 +30,7 @@ export class MockedProvider extends React.Component<any, any> {
 
   render() {
     return (
-      <ApolloProvider client={this.client}>
+      <ApolloProvider client={this.client || this.props.client} store={this.props.store || null}>
         {this.props.children}
       </ApolloProvider>
     );
@@ -43,7 +44,7 @@ export class MockedSubscriptionProvider extends React.Component<any, any> {
     super(props, context);
 
     const networkInterface = mockSubscriptionNetworkInterface(
-      this.props.subscriptions, ...this.props.responses
+      this.props.subscriptions, ...this.props.responses,
     );
 
     this.client = new ApolloClient({ networkInterface });
@@ -61,13 +62,13 @@ export class MockedSubscriptionProvider extends React.Component<any, any> {
 // Pass in multiple mocked responses, so that you can test flows that end up
 // making multiple queries to the server
 export function mockNetworkInterface(
-  ...mockedResponses: MockedResponse[]
+  ...mockedResponses: MockedResponse[],
 ): NetworkInterface {
   return new MockNetworkInterface(...mockedResponses);
 }
 
 export function mockSubscriptionNetworkInterface(
-  mockedSubscriptions: MockedSubscription[], ...mockedResponses: MockedResponse[]
+  mockedSubscriptions: MockedSubscription[], ...mockedResponses: MockedResponse[],
 ): MockSubscriptionNetworkInterface {
   return new MockSubscriptionNetworkInterface(mockedSubscriptions, ...mockedResponses);
 }
@@ -103,11 +104,14 @@ export class MockNetworkInterface implements NetworkInterface {
 
   constructor(...mockedResponses: MockedResponse[]) {
     mockedResponses.forEach((mockedResponse) => {
-      this.addMockedReponse(mockedResponse);
+      if (!mockedResponse.result && !mockedResponse.error) {
+        throw new Error('Mocked response should contain either result or error.');
+      }
+      this.addMockedResponse(mockedResponse);
     });
   }
 
-  public addMockedReponse(mockedResponse: MockedResponse) {
+  public addMockedResponse(mockedResponse: MockedResponse) {
     const key = requestToKey(mockedResponse.request);
     let mockedResponses = this.mockedResponsesByKey[key];
     if (!mockedResponses) {
@@ -127,7 +131,7 @@ export class MockNetworkInterface implements NetworkInterface {
 
       const key = requestToKey(parsedRequest);
 
-      if (!this.mockedResponsesByKey[key]) {
+      if (!this.mockedResponsesByKey[key] || this.mockedResponsesByKey[key].length === 0) {
         throw new Error('No more mocked responses for the query: ' + print(request.query));
       }
 
@@ -227,7 +231,7 @@ export class MockSubscriptionNetworkInterface extends MockNetworkInterface imple
 function requestToKey(request: ParsedRequest): string {
   const queryString = request.query && print(request.query);
   return JSON.stringify({
-    variables: request.variables,
+    variables: request.variables || {},
     debugName: request.debugName,
     query: queryString,
   });

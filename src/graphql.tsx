@@ -20,6 +20,7 @@ import ApolloClient, {
   ApolloStore,
   ApolloQueryResult,
   ApolloError,
+  FetchPolicy,
 } from 'apollo-client';
 
 import {
@@ -43,15 +44,12 @@ export declare interface MutationOptions {
   variables?: Object;
   optimisticResponse?: Object;
   updateQueries?: MutationQueryReducersMap;
-  forceFetch?: boolean;
 }
 
 export declare interface QueryOptions {
   ssr?: boolean;
   variables?: { [key: string]: any };
-  forceFetch?: boolean;
-  returnPartialData?: boolean;
-  noFetch?: boolean;
+  fetchPolicy?: FetchPolicy;
   pollInterval?: number;
   // deprecated
   skip?: boolean;
@@ -103,7 +101,7 @@ let nextVersion = 0;
 
 export function withApollo(
   WrappedComponent,
-  operationOptions: OperationOption = {}
+  operationOptions: OperationOption = {},
 ) {
 
   const withDisplayName = `withApollo(${getDisplayName(WrappedComponent)})`;
@@ -123,7 +121,7 @@ export function withApollo(
       invariant(!!this.client,
           `Could not find "client" in the context of ` +
           `"${withDisplayName}". ` +
-          `Wrap the root component in an <ApolloProvider>`
+          `Wrap the root component in an <ApolloProvider>`,
         );
 
     }
@@ -131,7 +129,7 @@ export function withApollo(
     getWrappedInstance() {
       invariant(operationOptions.withRef,
         `To access the wrapped instance, you need to specify ` +
-        `{ withRef: true } in the options`
+        `{ withRef: true } in the options`,
       );
 
       return (this.refs as any).wrappedInstance;
@@ -161,7 +159,7 @@ export interface OperationOption {
 
 export default function graphql(
   document: DocumentNode,
-  operationOptions: OperationOption = {}
+  operationOptions: OperationOption = {},
 ) {
 
   // extract options
@@ -185,11 +183,18 @@ export default function graphql(
 
     const graphQLDisplayName = `${alias}(${getDisplayName(WrappedComponent)})`;
 
+    // A recycler that we can use to recycle old observable queries to keep
+    // them hot between component unmounts and remounts.
+    //
+    // Note that the existence of this recycler could potentially cause memory
+    // leaks if many components are being created and unmounted in parallel.
+    // However, this is an unlikely scenario.
+    const recycler = new ObservableQueryRecycler();
+
     class GraphQL extends Component<any, any> {
       static displayName = graphQLDisplayName;
       static WrappedComponent = WrappedComponent;
       static contextTypes = {
-        store: PropTypes.object.isRequired,
         client: PropTypes.object.isRequired,
       };
 
@@ -204,7 +209,8 @@ export default function graphql(
       private type: DocumentType;
 
       // request / action storage. Note that we delete querySubscription if we
-      // unsubscribe but never delete queryObservable once it is created.
+      // unsubscribe but never delete queryObservable once it is created. We
+      // only delete queryObservable when we unmount the component.
       private queryObservable: ObservableQuery<any> | any;
       private querySubscription: Subscription;
       private previousData: any = {};
@@ -224,15 +230,17 @@ export default function graphql(
         invariant(!!this.client,
           `Could not find "client" in the context of ` +
           `"${graphQLDisplayName}". ` +
-          `Wrap the root component in an <ApolloProvider>`
+          `Wrap the root component in an <ApolloProvider>`,
         );
 
         this.store = this.client.store;
-
         this.type = operation.type;
+      }
 
-        if (this.shouldSkip(props)) return;
-        this.setInitialProps();
+      componentWillMount() {
+        if (!this.shouldSkip(this.props)) {
+          this.setInitialProps();
+        }
       }
 
       componentDidMount() {
@@ -244,11 +252,24 @@ export default function graphql(
         }
       }
 
-      componentWillReceiveProps(nextProps) {
-        if (shallowEqual(this.props, nextProps)) return;
+      componentWillReceiveProps(nextProps, nextContext) {
+        if (shallowEqual(this.props, nextProps) && this.client === nextContext.client) {
+          return;
+        }
 
         this.shouldRerender = true;
 
+        if (this.client !== nextContext.client) {
+          this.client = nextContext.client;
+          this.unsubscribeFromQuery();
+          this.queryObservable = null;
+          this.previousData = {};
+          this.updateQuery(nextProps);
+          if (!this.shouldSkip(nextProps)) {
+            this.subscribeToQuery();
+          }
+          return;
+        }
         if (this.type === DocumentType.Mutation) {
           return;
         };
@@ -278,7 +299,17 @@ export default function graphql(
       }
 
       componentWillUnmount() {
-        if (this.type === DocumentType.Query) this.unsubscribeFromQuery();
+        if (this.type === DocumentType.Query) {
+          // Recycle the query observable if there ever was one.
+          if (this.queryObservable) {
+            recycler.recycle(this.queryObservable);
+            delete this.queryObservable;
+          }
+
+          // Unsubscribe from our query subscription.
+          this.unsubscribeFromQuery();
+        }
+
         if (this.type === DocumentType.Subscription) this.unsubscribeFromQuery();
 
         this.hasMounted = false;
@@ -312,10 +343,10 @@ export default function graphql(
           invariant(typeof props[variable.name.value] !== 'undefined',
             `The operation '${operation.name}' wrapping '${getDisplayName(WrappedComponent)}' ` +
             `is expecting a variable: '${variable.name.value}' but it was not found in the props ` +
-            `passed to '${graphQLDisplayName}'`
+            `passed to '${graphQLDisplayName}'`,
           );
         }
-        opts.variables = variables;
+        opts = { ...opts, variables };
         return opts;
       };
 
@@ -347,14 +378,23 @@ export default function graphql(
             query: document,
           }, opts));
         } else {
-          this.queryObservable = this.client.watchQuery(assign({
-            query: document,
-            metadata: {
-              reactComponent: {
-                displayName: graphQLDisplayName,
+          // Try to reuse an `ObservableQuery` instance from our recycler. If
+          // we get null then there is no instance to reuse and we should
+          // create a new `ObservableQuery`. Otherwise we will use our old one.
+          const queryObservable = recycler.reuse(opts);
+
+          if (queryObservable === null) {
+            this.queryObservable = this.client.watchQuery(assign({
+              query: document,
+              metadata: {
+                reactComponent: {
+                  displayName: graphQLDisplayName,
+                },
               },
-            },
-          }, opts));
+            }, opts));
+          } else {
+            this.queryObservable = queryObservable;
+          }
         }
       }
 
@@ -392,7 +432,9 @@ export default function graphql(
 
         const opts = this.calculateOptions() as any;
         if (opts.ssr === false) return false;
-        if (opts.forceFetch) delete opts.forceFetch; // ignore force fetch in SSR;
+        if (opts.fetchPolicy === 'network-only') {
+          opts.fetchPolicy = 'cache-first'; // ignore force fetch in SSR;
+        }
 
         const observable = this.client.watchQuery(assign({ query: document }, opts));
         const result = observable.currentResult();
@@ -421,7 +463,7 @@ export default function graphql(
           invariant(clashingKeys.length === 0,
             `the result of the '${graphQLDisplayName}' operation contains keys that ` +
             `conflict with the return object.` +
-            clashingKeys.map(k => `'${k}'`).join(', ') + ` not allowed.`
+            clashingKeys.map(k => `'${k}'`).join(', ') + ` not allowed.`,
           );
 
           this.forceRenderChildren();
@@ -464,7 +506,7 @@ export default function graphql(
       getWrappedInstance() {
         invariant(operationOptions.withRef,
           `To access the wrapped instance, you need to specify ` +
-          `{ withRef: true } in the options`
+          `{ withRef: true } in the options`,
         );
 
         return (this.refs as any).wrappedInstance;
@@ -496,7 +538,29 @@ export default function graphql(
           // fetch the current result (if any) from the store
           const currentResult = this.queryObservable.currentResult();
           const { loading, error, networkStatus } = currentResult;
-          assign(data, { loading, error, networkStatus });
+          assign(data, { loading, networkStatus });
+
+          // Define the error property on the data object. If the user does
+          // not get the error object from `data` within 10 milliseconds
+          // then we will log the error to the console.
+          //
+          // 10 milliseconds is an arbitrary number picked to work around any
+          // potential asynchrony in React rendering. It is not super important
+          // that the error be logged ASAP, but 10 ms is enough to make it
+          // _feel_ like it was logged ASAP while still tolerating asynchrony.
+          let logErrorTimeoutId = setTimeout(() => {
+            if (error) {
+              console.error('Unhandled (in react-apollo)', error.stack || error);
+            }
+          }, 10);
+          Object.defineProperty(data, 'error', {
+            configurable: true,
+            enumerable: true,
+            get: () => {
+              clearTimeout(logErrorTimeoutId);
+              return error;
+            },
+          });
 
           if (loading) {
             // while loading, we should use any previous data we have
@@ -517,13 +581,13 @@ export default function graphql(
         const { shouldRerender, renderedElement, props } = this;
         this.shouldRerender = false;
 
+        if (!shouldRerender && renderedElement && renderedElement.type === WrappedComponent) {
+          return renderedElement;
+        }
+
         const data = this.dataForChild();
         const clientProps = this.calculateResultProps(data);
         const mergedPropsAndData = assign({}, props, clientProps);
-
-        if (!shouldRerender && renderedElement) {
-          return renderedElement;
-        }
 
         if (operationOptions.withRef) mergedPropsAndData.ref = 'wrappedInstance';
         this.renderedElement = createElement(WrappedComponent, mergedPropsAndData);
@@ -537,3 +601,88 @@ export default function graphql(
 
   return wrapWithApolloComponent;
 };
+
+/**
+ * An observable query recycler stores some observable queries that are no
+ * longer in use, but that we may someday use again.
+ *
+ * Recycling observable queries avoids a few unexpected functionalities that
+ * may be hit when using the `react-apollo` API. Namely not updating queries
+ * when a component unmounts, and calling reducers/`updateQueries` more times
+ * then is necessary for old observable queries.
+ *
+ * We assume that the GraphQL document for every `ObservableQuery` is the same.
+ *
+ * For more context on why this was added and links to the issues recycling
+ * `ObservableQuery`s fixes see issue [#462][1].
+ *
+ * [1]: https://github.com/apollographql/react-apollo/pull/462
+ */
+class ObservableQueryRecycler {
+  /**
+   * The internal store for our observable queries and temporary subscriptions.
+   */
+  private observableQueries: Array<{
+    observableQuery: ObservableQuery<any>,
+    subscription: Subscription,
+  }> = [];
+
+  /**
+   * Recycles an observable query that the recycler is finished with. It is
+   * stored in this class so that it may be used later on.
+   *
+   * A subscription is made to the observable query so that it continues to
+   * live even though the updates are noops.
+   *
+   * By recycling an observable query we keep the results fresh so that when it
+   * gets reused all of the mutations that have happened since recycle and
+   * reuse have been applied.
+   */
+  public recycle (observableQuery: ObservableQuery<any>): void {
+    // Stop the query from polling when we recycle. Polling may resume when we
+    // reuse it and call `setOptions`.
+    observableQuery.setOptions({
+      fetchPolicy: 'cache-only',
+      pollInterval: 0,
+    });
+
+    this.observableQueries.push({
+      observableQuery,
+      subscription: observableQuery.subscribe({}),
+    });
+  }
+
+  /**
+   * Reuses an observable query that was recycled earlier on in this class’s
+   * lifecycle. This observable was kept fresh by our recycler with a
+   * subscription that will be unsubscribed from before returning the
+   * observable query.
+   *
+   * All mutations that occured between the time of recycling and the time of
+   * reusing have been applied.
+   */
+  public reuse (options: QueryOptions): ObservableQuery<any> {
+    if (this.observableQueries.length <= 0) {
+      return null;
+    }
+    const { observableQuery, subscription } = this.observableQueries.pop();
+    subscription.unsubscribe();
+
+    // When we reuse an `ObservableQuery` then the document and component
+    // GraphQL display name should be the same. Only the options may be
+    // different.
+    //
+    // Therefore we need to set the new options.
+    //
+    // If this observable query used to poll then polling will be restarted.
+    observableQuery.setOptions({
+      ...options,
+      // Explicitly set options changed when recycling to make sure they
+      // are set to `undefined` if not provided in options.
+      pollInterval: options.pollInterval,
+      fetchPolicy: options.fetchPolicy,
+    });
+
+    return observableQuery;
+  }
+}
